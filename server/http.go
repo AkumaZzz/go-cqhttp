@@ -5,12 +5,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/hex"
-	"github.com/guonaihong/gout/dataflow"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/guonaihong/gout/dataflow"
 
 	"github.com/Mrs4s/go-cqhttp/coolq"
 	"github.com/Mrs4s/go-cqhttp/global"
@@ -34,6 +35,7 @@ type httpClient struct {
 }
 
 var HttpServer = &httpServer{}
+var Debug = false
 
 func (s *httpServer) Run(addr, authToken string, bot *coolq.CQBot) {
 	gin.SetMode(gin.ReleaseMode)
@@ -92,13 +94,6 @@ func (s *httpServer) Run(addr, authToken string, bot *coolq.CQBot) {
 			time.Sleep(time.Second * 5)
 			os.Exit(1)
 		}
-		//err := s.engine.Run(addr)
-		//if err != nil {
-		//	log.Error(err)
-		//	log.Infof("请检查端口是否被占用.")
-		//	time.Sleep(time.Second * 5)
-		//	os.Exit(1)
-		//}
 	}()
 }
 
@@ -176,7 +171,8 @@ func GetGroupList(s *httpServer, c *gin.Context) {
 
 func GetGroupInfo(s *httpServer, c *gin.Context) {
 	gid, _ := strconv.ParseInt(getParam(c, "group_id"), 10, 64)
-	c.JSON(200, s.bot.CQGetGroupInfo(gid))
+	nc := getParamOrDefault(c, "no_cache", "false")
+	c.JSON(200, s.bot.CQGetGroupInfo(gid, nc == "true"))
 }
 
 func GetGroupMemberList(s *httpServer, c *gin.Context) {
@@ -307,7 +303,8 @@ func SetGroupKick(s *httpServer, c *gin.Context) {
 	gid, _ := strconv.ParseInt(getParam(c, "group_id"), 10, 64)
 	uid, _ := strconv.ParseInt(getParam(c, "user_id"), 10, 64)
 	msg := getParam(c, "message")
-	c.JSON(200, s.bot.CQSetGroupKick(gid, uid, msg))
+	block := getParamOrDefault(c, "reject_add_request", "false")
+	c.JSON(200, s.bot.CQSetGroupKick(gid, uid, msg, block == "true"))
 }
 
 func SetGroupBan(s *httpServer, c *gin.Context) {
@@ -341,6 +338,16 @@ func SendGroupNotice(s *httpServer, c *gin.Context) {
 func SetGroupLeave(s *httpServer, c *gin.Context) {
 	gid, _ := strconv.ParseInt(getParam(c, "group_id"), 10, 64)
 	c.JSON(200, s.bot.CQSetGroupLeave(gid))
+}
+
+func SetRestart(s *httpServer, c *gin.Context) {
+	delay, _ := strconv.ParseInt(getParam(c, "delay"), 10, 64)
+	c.JSON(200, coolq.MSG{"data": nil, "retcode": 0, "status": "async"})
+	go func(delay int64) {
+		time.Sleep(time.Duration(delay) * time.Millisecond)
+		Restart <- struct{}{}
+	}(delay)
+
 }
 
 func GetForwardMessage(s *httpServer, c *gin.Context) {
@@ -488,6 +495,7 @@ var httpApi = map[string]func(s *httpServer, c *gin.Context){
 	"set_group_whole_ban":        SetWholeBan,
 	"set_group_name":             SetGroupName,
 	"set_group_admin":            SetGroupAdmin,
+	"set_restart":                SetRestart,
 	"_send_group_notice":         SendGroupNotice,
 	"set_group_leave":            SetGroupLeave,
 	"get_image":                  GetImage,
@@ -505,6 +513,7 @@ var httpApi = map[string]func(s *httpServer, c *gin.Context){
 	"set_group_portrait":         SetGroupPortrait,
 	".handle_quick_operation":    HandleQuickOperation,
 	".ocr_image":                 OcrImage,
+	"ocr_image":                  OcrImage,
 	".get_word_slices":           GetWordSlices,
 }
 
